@@ -1,36 +1,31 @@
 # -*- coding: utf-8 -*-
 
 import os
-import twitter
+import weibo
+from weibo.oauth import write_token_file,read_token_file
+from weibo.oauth_dance import oauth_dance
 
-from twitter.oauth import write_token_file, read_token_file
-from twitter.oauth_dance import oauth_dance
-
+from configfile import * 
 
 def login():
 
     # Go to http://twitter.com/apps/new to create an app and get these items
     # See also http://dev.twitter.com/pages/oauth_single_token
 
-    APP_NAME = ''
-    CONSUMER_KEY = ''
-    CONSUMER_SECRET = ''
-    TOKEN_FILE = 'out/twitter.oauth'
+    TOKEN_FILE = 'out/weibo.oauth'
 
     try:
-        (oauth_token, oauth_token_secret) = read_token_file(TOKEN_FILE)
+        access_token = read_token_file(TOKEN_FILE)
     except IOError, e:
-        (oauth_token, oauth_token_secret) = oauth_dance(APP_NAME, CONSUMER_KEY,
-                CONSUMER_SECRET)
+        access_token = oauth_dance(WB_APP_KEY,WB_APP_SECRET,CALLBACK_URL,username,passwd)
 
         if not os.path.isdir('out'):
             os.mkdir('out')
 
-        write_token_file(TOKEN_FILE, oauth_token, oauth_token_secret)
+        write_token_file(TOKEN_FILE, access_token)
          
-    return twitter.Twitter(domain='api.twitter.com', api_version='1',
-                        auth=twitter.oauth.OAuth(oauth_token, oauth_token_secret,
-                        CONSUMER_KEY, CONSUMER_SECRET))
+    return weibo.Twitter(domain='api.weibo.com', api_version='2',
+                        auth=weibo.oauth.OAuth(access_token,WB_APP_KEY))
 
 if __name__ == '__main__':
     login()

@@ -2,7 +2,7 @@
 
 import sys
 import locale
-import twitter
+import weibo
 import redis
 import json
 import time
@@ -10,17 +10,17 @@ from random import shuffle
 from urllib2 import URLError
 from twitter__login import login
 
-def makeTwitterRequest(t, twitterFunction, max_errors=3, *args, **kwArgs): 
-    wait_period = 2
+def makeTwitterRequest(t, twitterFunction, max_errors=3, *args, **kwArgs):
+    wait_period = 5
     error_count = 0
     while True:
         try:
             return twitterFunction(*args, **kwArgs)
-        except twitter.api.TwitterHTTPError, e:
+        except weibo.api.TwitterHTTPError, e:
             error_count = 0
             wait_period = handleTwitterHTTPError(e, t, wait_period)
             if wait_period is None:
-                return
+                return None
         except URLError, e:
             error_count += 1
             print >> sys.stderr, "URLError encountered. Continuing."
@@ -29,7 +29,7 @@ def makeTwitterRequest(t, twitterFunction, max_errors=3, *args, **kwArgs):
                 raise
 
 def _getRemainingHits(t):
-    return t.account.rate_limit_status()['remaining_hits']
+    return t.account.rate_limit_status()['remaining_user_hits']
 
 # Handle the common HTTPErrors. Return an updated value for wait_period
 # if the problem is a 503 error. Block until the rate limit is reset if
@@ -40,23 +40,33 @@ def handleTwitterHTTPError(e, t, wait_period=2):
         print >> sys.stderr, 'Too many retries. Quitting.'
         raise e
 
+    r=json.loads(e.response_data)
+    print r
+    if (r.has_key('error_code')):
+        if (r['error_code'] == 20003):
+            print >> sys.stderr, 'error_code %i ,user not exist ' %(r['error_code'])
+            return None
+        else:
+            print >> sys.stderr, 'error_code %i' %(r['error_code'])
+            return None 
+
     if e.e.code == 401:
         print >> sys.stderr, 'Encountered 401 Error (Not Authorized)'
         return None
+
+    elif e.e.code == 403:
+        print >> sys.stderr, 'Rate limit reached: sleeping for %i secs' % (sleep_time, )
+        time.sleep(wait_period)
+        wait_period *= 1.5
+        return wait_period
+
     elif e.e.code in (502, 503):
         print >> sys.stderr, 'Encountered %i Error. Will retry in %i seconds' % (e.e.code,
                 wait_period)
         time.sleep(wait_period)
         wait_period *= 1.5
         return wait_period
-    elif _getRemainingHits(t) == 0:
-        status = t.account.rate_limit_status()
-        now = time.time()  # UTC
-        when_rate_limit_resets = status['reset_time_in_seconds']  # UTC
-        sleep_time = max(when_rate_limit_resets - now, 5) # Prevent negative numbers
-        print >> sys.stderr, 'Rate limit reached: sleeping for %i secs' % (sleep_time, )
-        time.sleep(sleep_time)
-        return 2
+
     else:
         raise e
 
@@ -90,7 +100,7 @@ def _getFriendsOrFollowersUsingFunc(
 
     return result
 
-def getUserInfo(
+def getUserInfo(  # weibo dosenot suppoer batch query,it easily result rate limit exhausted
     t, # Twitter connection
     r, # Redis connection
     screen_names=[],
@@ -108,44 +118,32 @@ def getUserInfo(
 
     info = []
     while len(screen_names) > 0:
-        screen_names_str = ','.join(screen_names[:100])
-        screen_names = screen_names[100:]
-
-        response = makeTwitterRequest(t, 
-                                      t.users.lookup,
-                                      screen_name=screen_names_str)
-        
+        response = makeTwitterRequest(t,
+                                      t.users.show,
+                                      screen_name=screen_names[0])
+        screen_names = screen_names[1:]
         if response is None:
-            break
-                                    
-        if type(response) is dict:  # Handle api quirk
-            response = [response]
-        for user_info in response:
-            r.set(getRedisIdByScreenName(user_info['screen_name'], 'info.json'),
-                  json.dumps(user_info))
-            r.set(getRedisIdByUserId(user_info['id'], 'info.json'), 
-                  json.dumps(user_info))
-        info.extend(response)
+            continue
+
+        r.set(getRedisIdByScreenName(response['screen_name'], 'info.json'),
+                  json.dumps(response))
+        r.set(getRedisIdByUserId(response['id'], 'info.json'), 
+                  json.dumps(response))
+        info.extend([response])
 
     while len(user_ids) > 0:
-        user_ids_str = ','.join([str(_id) for _id in user_ids[:100]])
-        user_ids = user_ids[100:]
-
         response = makeTwitterRequest(t, 
-                                      t.users.lookup,
-                                      user_id=user_ids_str)
-        
+                                      t.users.show,
+                                      uid=user_ids[0])
+        user_ids = user_ids[1:]        
         if response is None:
-            break
-                                    
-        if type(response) is dict:  # Handle api quirk
-            response = [response]
-        for user_info in response:
-            r.set(getRedisIdByScreenName(user_info['screen_name'], 'info.json'),
-                  json.dumps(user_info))
-            r.set(getRedisIdByUserId(user_info['id'], 'info.json'), 
-                  json.dumps(user_info))
-        info.extend(response)
+            continue
+
+        r.set(getRedisIdByScreenName(response['screen_name'], 'info.json'),
+                  json.dumps(response))
+        r.set(getRedisIdByUserId(response['id'], 'info.json'), 
+                  json.dumps(response))
+        info.extend([response])
 
 
     return info
@@ -176,9 +174,9 @@ if __name__ == '__main__': # For ad-hoc testing
                 e.code = 401
                 #e.code = 502
                 #e.code = 503
-                raise twitter.api.TwitterHTTPError(e, "http://foo.com", "FOO", "BAR")
+                raise weibo.api.TwitterHTTPError(e, "http://foo.com", "FOO", "BAR")
                 return twitterFunction(*args, **kwArgs)
-            except twitter.api.TwitterHTTPError, e:
+            except weibo.api.TwitterHTTPError, e:
                 wait_period = handleTwitterHTTPError(e, t, wait_period)
                 if wait_period is None:
                     return

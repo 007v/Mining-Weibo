@@ -35,10 +35,10 @@ r = redis.Redis()
 # that bind the first two arguments
 
 getFriends = functools.partial(_getFriendsOrFollowersUsingFunc, 
-                               t.friends.ids, 'friend_ids', t, r)
+                               t.friendships.friends.ids, 'friend_ids', t, r)
 
 getFollowers = functools.partial(_getFriendsOrFollowersUsingFunc,
-                                 t.followers.ids, 'follower_ids', t, r)
+                                 t.friendships.followers.ids, 'follower_ids', t, r)
 
 screen_name = SCREEN_NAME
 

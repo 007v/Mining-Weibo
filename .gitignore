@@ -1,3 +1,4 @@
 .gitignore
 python_code/out
+python_code/configfile.py
 *.pyc

@@ -16,9 +16,9 @@ r = redis.Redis()
 # create convenience functions
 
 getFriends = functools.partial(_getFriendsOrFollowersUsingFunc, 
-                               t.friends.ids, 'friend_ids', t, r)
+                               t.friendships.friends.ids, 'friend_ids', t, r)
 getFollowers = functools.partial(_getFriendsOrFollowersUsingFunc,
-                                 t.followers.ids, 'follower_ids', t, r)
+                                 t.friendships.followers.ids, 'follower_ids', t, r)
 
 def crawl(
     screen_names,
@@ -30,6 +30,7 @@ def crawl(
     ):
 
     getUserInfo(t, r, screen_names=screen_names)
+    
     for screen_name in screen_names:
         friend_ids = getFriends(screen_name, limit=friends_limit)
         follower_ids = getFollowers(screen_name, limit=followers_limit)
