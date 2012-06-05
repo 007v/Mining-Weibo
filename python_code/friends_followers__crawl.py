@@ -5,20 +5,24 @@ import redis
 import functools
 from twitter__login import login
 from twitter__util import getUserInfo
-from twitter__util import _getFriendsOrFollowersUsingFunc
+from twitter__util import _getSomeProfileInBatchFunc
+from twitter__util import getRedisIdByUserId
+from twitter__util import getRedisIdByScreenName
+from twitter__util import samplemapper
 
 SCREEN_NAME = sys.argv[1]
 
 t = login()
 r = redis.Redis()
 
-# Some wrappers around _getFriendsOrFollowersUsingFunc that 
+# Some wrappers around _getSomeProfileInBatchFunc that 
 # create convenience functions
-
-getFriends = functools.partial(_getFriendsOrFollowersUsingFunc, 
-                               t.friendships.friends.ids, 'friend_ids', t, r)
-getFollowers = functools.partial(_getFriendsOrFollowersUsingFunc,
-                                 t.friendships.followers.ids, 'follower_ids', t, r)
+getFriendsBatch = functools.partial(_getSomeProfileInBatchFunc,
+                                    t.friendships.friends,'users', 'info.json', t, r)
+getFollowersBatch = functools.partial(_getSomeProfileInBatchFunc,
+                                      t.friendships.followers, 'users','info.json', t,r)
+def flat(l):
+    return reduce(lambda x,y:x+y, l)
 
 def crawl(
     screen_names,
@@ -28,36 +32,37 @@ def crawl(
     friends_sample=0.2, #XXX
     followers_sample=0.0,
     ):
+    
+    def crawlmapper(screen_name):
+        friends_info = getFriendsBatch(screen_name,friends_limit)
+        map(lambda x:
+                r.sadd(getRedisIdByScreenName(screen_name, 'friend_ids'), 
+                       x['id']),
+            friends_info)
+        scard = r.scard(getRedisIdByScreenName(screen_name, 'friend_ids'))
+        print >> sys.stderr, 'Fetched %s ids for %s' % (scard, screen_name)
+
+
+        followers_info = getFollowersBatch(screen_name,followers_limit)
+        map(lambda x: 
+            r.sadd(getRedisIdByScreenName(screen_name, 'follower_ids'),
+                   x['id']),
+            friends_info)
+        scard = r.scard(getRedisIdByScreenName(screen_name, 'follower_ids'))
+        print >> sys.stderr, 'Fetched %s ids for %s' % (scard, screen_name)
+
+        return map(lambda u1: u1['screen_name'],
+                   flat(map(lambda u: u,
+                            map(samplemapper, 
+                                [friends_info,followers_info],
+                                [friends_sample,followers_sample]))))
 
     getUserInfo(t, r, screen_names=screen_names)
-    
-    for screen_name in screen_names:
-        friend_ids = getFriends(screen_name, limit=friends_limit)
-        follower_ids = getFollowers(screen_name, limit=followers_limit)
-
-        friends_info = getUserInfo(t, r, user_ids=friend_ids, 
-                                   sample=friends_sample)
-
-        followers_info = getUserInfo(t, r, user_ids=follower_ids,
-                                     sample=followers_sample)
-
-        next_queue = [u['screen_name'] for u in friends_info + followers_info]
-
-        d = 1
-        while d < depth:
-            d += 1
-            (queue, next_queue) = (next_queue, [])
-            for _screen_name in queue:
-                friend_ids = getFriends(_screen_name, limit=friends_limit)
-                follower_ids = getFollowers(_screen_name, limit=followers_limit)
-
-                next_queue.extend(friend_ids + follower_ids)
-
-                # Note that this function takes a kw between 0.0 and 1.0 called
-                # sample that allows you to crawl only a random sample of nodes
-                # at any given level of the graph
-
-                getUserInfo(t, r, user_ids=next_queue)
+    d=0
+    while d<depth:
+        d+=1
+        screen_names=flat(map(crawlmapper,screen_names))
+        print screen_names
 
 if __name__ == '__main__':
     if len(sys.argv) < 2:

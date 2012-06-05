@@ -10,6 +10,14 @@ from random import shuffle
 from urllib2 import URLError
 from twitter__login import login
 
+
+def samplemapper(lst,sample):
+    if sample < 1.0:
+        shuffle(lst)
+        return  lst[:int(len(lst) * sample)]
+    else:
+        return lst
+
 def makeTwitterRequest(t, twitterFunction, max_errors=3, *args, **kwArgs):
     wait_period = 5
     error_count = 0
@@ -45,6 +53,9 @@ def handleTwitterHTTPError(e, t, wait_period=2):
     if (r.has_key('error_code')):
         if (r['error_code'] == 20003):
             print >> sys.stderr, 'error_code %i ,user not exist ' %(r['error_code'])
+            return None
+        elif (r['error_code'] in( 10022,10023,10024)):
+            print >> sys.stderr, 'rate limit exhausted. '
             return None
         else:
             print >> sys.stderr, 'error_code %i' %(r['error_code'])
@@ -82,22 +93,48 @@ def _getFriendsOrFollowersUsingFunc(
     screen_name=None,
     limit=10000,
     ):
-
     cursor = -1
 
     result = []
     while cursor != 0:
         response = makeTwitterRequest(t, func, screen_name=screen_name, cursor=cursor)
-        for _id in response['ids']:
-            result.append(_id)
-            r.sadd(getRedisIdByScreenName(screen_name, key_name), _id)
+        for item in response['ids']:
+            result.append(item)
+            r.sadd(getRedisIdByScreenName(screen_name, key_name), item)
 
         cursor = response['next_cursor']
         scard = r.scard(getRedisIdByScreenName(screen_name, key_name))
         print >> sys.stderr, 'Fetched %s ids for %s' % (scard, screen_name)
         if scard >= limit:
             break
+    return result
 
+def _getSomeProfileInBatchFunc(
+    func,
+    profile, # users , status ,commmets et al
+    key_name,
+    t, # Twitter connection
+    r, # Redis connection
+    screen_name=None,
+    limit=10000,
+    ):
+    cursor = -1
+    result = []
+    scard=0
+    while cursor != 0:
+        response = makeTwitterRequest(t, func, screen_name=screen_name, cursor=cursor,count=200)
+        if response is None:
+            break
+        for item in response[profile]:
+            result.append(item)
+            r.set(getRedisIdByScreenName(item['screen_name'], key_name),
+                  json.dumps(item))
+            r.set(getRedisIdByUserId(item['id'], key_name), 
+                  json.dumps(item))
+        cursor = response['next_cursor']
+        scard+=len(response[profile])
+        if scard >= limit:
+            break
     return result
 
 def getUserInfo(  # weibo dosenot suppoer batch query,it easily result rate limit exhausted
@@ -138,7 +175,6 @@ def getUserInfo(  # weibo dosenot suppoer batch query,it easily result rate limi
         user_ids = user_ids[1:]        
         if response is None:
             continue
-
         r.set(getRedisIdByScreenName(response['screen_name'], 'info.json'),
                   json.dumps(response))
         r.set(getRedisIdByUserId(response['id'], 'info.json'), 
