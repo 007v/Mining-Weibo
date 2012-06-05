@@ -44,18 +44,17 @@ def crawl(
 
 
         followers_info = getFollowersBatch(screen_name,followers_limit)
-        map(lambda x: 
-            r.sadd(getRedisIdByScreenName(screen_name, 'follower_ids'),
-                   x['id']),
+        map(lambda x:
+                r.sadd(getRedisIdByScreenName(screen_name, 'follower_ids'),
+                       x['id']),
             friends_info)
         scard = r.scard(getRedisIdByScreenName(screen_name, 'follower_ids'))
         print >> sys.stderr, 'Fetched %s ids for %s' % (scard, screen_name)
 
         return map(lambda u1: u1['screen_name'],
-                   flat(map(lambda u: u,
-                            map(samplemapper, 
-                                [friends_info,followers_info],
-                                [friends_sample,followers_sample]))))
+                   flat(map(samplemapper,
+                            [friends_info,followers_info],
+                            [friends_sample,followers_sample])))
 
     getUserInfo(t, r, screen_names=screen_names)
     d=0
