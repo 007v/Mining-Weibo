@@ -37,9 +37,6 @@ def crawl(
     
     def crawlmapper(screen_name):
         if  r.get(getRedisIdByScreenName(screen_name,'crawled_in_60min')) is None:
-            r.set(getRedisIdByScreenName(screen_name,'crawled_in_60min'),'1')
-            r.expire(getRedisIdByScreenName(screen_name,'crawled_in_60min'),3600)
-
             friends_info = getFriendsBatch(screen_name,friends_limit)
             map(lambda x:
                     r.sadd(getRedisIdByScreenName(screen_name, 'friend_ids'), 
@@ -56,6 +53,9 @@ def crawl(
                 followers_info)
             scard = r.scard(getRedisIdByScreenName(screen_name, 'follower_ids'))
             print >> sys.stderr, 'Fetched %s ids for %s' % (scard, screen_name)
+            if friends_info==[] or followers_info==[]:
+                r.set(getRedisIdByScreenName(screen_name,'crawled_in_60min'),'1')
+                r.expire(getRedisIdByScreenName(screen_name,'crawled_in_60min'),3600)
         else:
             friends_info=map(RedisUserId2UserInfoWraper,
                              list(r.smembers(getRedisIdByScreenName(screen_name,'friend_ids'))))
@@ -64,7 +64,8 @@ def crawl(
         
         return map(lambda u1: u1['screen_name'],
                    filter(lambda info:
-                              (info['followers_count']<1000 and
+                              (info is not None and 
+                               info['followers_count']<1000 and
                                info['friends_count']<1000), #filter Public Intellectual and Zombie
                           flat(map(samplemapper,
                                    [friends_info,followers_info],
@@ -75,7 +76,7 @@ def crawl(
     while d<depth:
         d+=1
         screen_names=flat(map(crawlmapper,screen_names))
-        print 'crawed ',len(screen_names) ,'ids'
+        print 'crawled ',len(screen_names) ,'ids'
 
 if __name__ == '__main__':
     if len(sys.argv) < 2:
