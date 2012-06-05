@@ -47,7 +47,7 @@ def crawl(
         map(lambda x:
                 r.sadd(getRedisIdByScreenName(screen_name, 'follower_ids'),
                        x['id']),
-            friends_info)
+            followers_info)
         scard = r.scard(getRedisIdByScreenName(screen_name, 'follower_ids'))
         print >> sys.stderr, 'Fetched %s ids for %s' % (scard, screen_name)
 
