@@ -18,14 +18,6 @@ def samplemapper(lst,sample):
     else:
         return lst
 
-def wb_filter(screen_name): #filter Public Intellectual , Zombies 
-    sn=r.get(getRedisIdByScreenName(screen_name,'info,json'))
-    if sn is None:
-        return None
-    if sn['followers_count']>1000 or sn['friends_count']>1000:
-        return None
-    return screen_name
-
 
 def makeTwitterRequest(t, twitterFunction, max_errors=3, *args, **kwArgs):
     wait_period = 5
@@ -125,6 +117,7 @@ def _getSomeProfileInBatchFunc(
     t, # Twitter connection
     r, # Redis connection
     screen_name=None,
+    uid=None,
     limit=10000,
     ):
     cursor = -1
@@ -209,6 +202,12 @@ def getRedisIdByScreenName(screen_name, key_name):
 def getRedisIdByUserId(user_id, key_name):
     return 'user_id$' + str(user_id) + '$' + key_name
 
+def RedisUserId2UserInfo(r,user_id):
+    info=(r.get(getRedisIdByUserId(user_id,'info.json')))
+    if info is None:
+        return None
+    else:
+        return json.loads(info)
 
 if __name__ == '__main__': # For ad-hoc testing
 
