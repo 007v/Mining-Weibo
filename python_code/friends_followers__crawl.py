@@ -24,6 +24,7 @@ getFollowersBatch = functools.partial(_getSomeProfileInBatchFunc,
 def flat(l):
     return reduce(lambda x,y:x+y, l)
 
+
 def crawl(
     screen_names,
     friends_limit=10000,
@@ -34,6 +35,11 @@ def crawl(
     ):
     
     def crawlmapper(screen_name):
+        if  r.get(getRedisIdByScreenName(screen_name,'crawled_in_60min')) is None:
+            r.set(getRedisIdByScreenName(screen_name,'crawled_in_60min'),'1')
+            r.expire(getRedisIdByScreenName(screen_name,'crawled_in_60min'),3600)
+        else:
+            return []
         friends_info = getFriendsBatch(screen_name,friends_limit)
         map(lambda x:
                 r.sadd(getRedisIdByScreenName(screen_name, 'friend_ids'), 
@@ -50,12 +56,15 @@ def crawl(
             followers_info)
         scard = r.scard(getRedisIdByScreenName(screen_name, 'follower_ids'))
         print >> sys.stderr, 'Fetched %s ids for %s' % (scard, screen_name)
-
+        
         return map(lambda u1: u1['screen_name'],
-                   flat(map(samplemapper,
-                            [friends_info,followers_info],
-                            [friends_sample,followers_sample])))
-
+                   filter(lambda info:
+                              (info['followers_count']<1000 and
+                               info['friends_count']<1000), #filter Public Intellectual and Zombie
+                          flat(map(samplemapper,
+                                   [friends_info,followers_info],
+                                   [friends_sample,followers_sample]))))
+    
     getUserInfo(t, r, screen_names=screen_names)
     d=0
     while d<depth:

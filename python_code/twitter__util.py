@@ -18,6 +18,15 @@ def samplemapper(lst,sample):
     else:
         return lst
 
+def wb_filter(screen_name): #filter Public Intellectual , Zombies 
+    sn=r.get(getRedisIdByScreenName(screen_name,'info,json'))
+    if sn is None:
+        return None
+    if sn['followers_count']>1000 or sn['friends_count']>1000:
+        return None
+    return screen_name
+
+
 def makeTwitterRequest(t, twitterFunction, max_errors=3, *args, **kwArgs):
     wait_period = 5
     error_count = 0
@@ -126,6 +135,7 @@ def _getSomeProfileInBatchFunc(
         if response is None:
             break
         for item in response[profile]:
+            
             result.append(item)
             r.set(getRedisIdByScreenName(item['screen_name'], key_name),
                   json.dumps(item))
